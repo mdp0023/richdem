@@ -6,7 +6,6 @@ jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    working-directory: wrappers/pyrichdem
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-13, macos-14]
@@ -22,6 +21,7 @@ jobs:
 
       - name: Build wheels
         run: python -m cibuildwheel --output-dir wheelhouse
+        working-directory: wrappers/pyrichdem
         # to supply options, put them in 'env', like:
         # env:
         #   CIBW_SOME_OPTION: value
