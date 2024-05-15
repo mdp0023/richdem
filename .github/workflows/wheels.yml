@@ -6,6 +6,7 @@ jobs:
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    working-directory: wrappers/pyrichdem
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-13, macos-14]
