@@ -18,35 +18,10 @@ class DisjointDenseIntSet {
   //Which set is this set's parent. May be the set itself.
   std::vector<uint32_t> parent;
 
-  //When a set value X is passed to the data structure, this checks to see if
-  //the set exists. If not, the set is created, along with all the sets between
-  //the old maximum set id and X.
-  void checkSize(const uint32_t newN){
-    if(newN < rank.size()) {             // Does the set exist?
-      return;                            // Yup.
-    }
-
-    // The set didn't exist. Let's expand the dense set
-    const auto old_size = rank.size(); //Get old maximum set value
-
-    // Resize so that `newN` is a valid value. None of the new sets have
-    // children.
-    rank.resize(newN + 1, 0);
-
-    // Resize so that `newN` is a valid value
-    parent.resize(newN+1);
-
-    //Ensure that each new set is its own parent since they have not yet been
-    //merged.
-    for(auto i = old_size; i < newN+1; i++) {
-      parent[i] = i;
-    }
-  }
-
  public:
   // Construct a DisjointDenseIntSet without any sets. Sets will be dynamically
   // created as the data structure is used.
-  DisjointDenseIntSet(){}
+  DisjointDenseIntSet() = default;
 
   // Create a DisjointDenseIntSet with `N` initial sets preallocated. More sets
   // can be dynamically allocated as the data structure is used.
@@ -57,6 +32,30 @@ class DisjointDenseIntSet {
       parent[i] = i;
     }
   }
+
+  // Resizes set to size N. Note that the set can only grow because the set's
+  // valiity might be compromised if it shrinks.
+  void resize(const uint32_t new_size){
+    const auto old_size = rank.size(); //Get the old size
+
+    if(new_size == old_size){
+      return; // Nothing to do
+    }
+
+    if(new_size < old_size){
+      throw std::runtime_error("DisjointDenseIntSet::resize() cannot shrink the set!");
+    }
+
+    rank.resize(new_size, 0);
+    parent.resize(new_size);
+
+    //Ensure that each new set is its own parent since they have not yet been
+    //merged.
+    for(auto i = old_size; i < new_size; i++) {
+      parent[i] = i;
+    }
+  }
+
 
   // Explicitly creates a set. May incidentally create several intermediate sets
   // of `n` is more than one larger than the maximum set id previously seen.
@@ -132,8 +131,8 @@ class DisjointDenseIntSet {
   // `mergeAintoB` sacrifices speed but preserves parenthood by always making A
   // a child of B, regardless of the height of `B`.
   void mergeAintoB(const uint32_t a, const uint32_t b){
-    checkSize(a);
-    checkSize(b);
+    assert(a < rank.size());
+    assert(b < rank.size());
 
     parent[a] = b;
     if(rank[a] == rank[b]){
@@ -146,8 +145,25 @@ class DisjointDenseIntSet {
     }
   }
 
+  // Sets the parent without adjusting rank information. This voids some
+  // warranties on the data structure, but the result is that we can
+  // make guarantees about race conditions.
+  void set_parent(const uint32_t a, const uint32_t b){
+    assert(a < rank.size());
+    assert(b < rank.size());
+
+    parent[a] = b;
+  }
+
   //Returns true if A and B belong to the same set.
   bool sameSet(const uint32_t a, const uint32_t b){
     return findSet(a) == findSet(b);
+  }
+
+  // Returns the parent of a set without collapsing any chains.
+  uint32_t raw_parent(const uint32_t i) {
+    assert(i < rank.size());
+
+    return parent[i];
   }
 };
