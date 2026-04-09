@@ -14,6 +14,10 @@
 #include <vector>
 #include <tuple>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
+
 namespace radix_heap {
 namespace internal {
 template<bool Is64bit> class find_bucket_impl;
@@ -21,16 +25,44 @@ template<bool Is64bit> class find_bucket_impl;
 template<>
 class find_bucket_impl<false> {
  public:
-  static inline constexpr size_t find_bucket(uint32_t x, uint32_t last) {
-    return x == last ? 0 : 32 - __builtin_clz(x ^ last);
+  static inline size_t find_bucket(uint32_t x, uint32_t last) {
+    if (x == last) {
+      return 0;
+    }
+#ifdef _MSC_VER
+    unsigned long idx = 0;
+    _BitScanReverse(&idx, x ^ last);
+    return static_cast<size_t>(idx + 1);
+#else
+    return 32 - __builtin_clz(x ^ last);
+#endif
   }
 };
 
 template<>
 class find_bucket_impl<true> {
  public:
-  static inline constexpr size_t find_bucket(uint64_t x, uint64_t last) {
-    return x == last ? 0 : 64 - __builtin_clzll(x ^ last);
+  static inline size_t find_bucket(uint64_t x, uint64_t last) {
+    if (x == last) {
+      return 0;
+    }
+#ifdef _MSC_VER
+    unsigned long idx = 0;
+#if defined(_M_X64) || defined(_M_ARM64)
+    _BitScanReverse64(&idx, x ^ last);
+    return static_cast<size_t>(idx + 1);
+#else
+    const uint32_t hi = static_cast<uint32_t>((x ^ last) >> 32);
+    if (hi) {
+      _BitScanReverse(&idx, hi);
+      return static_cast<size_t>(idx + 33);
+    }
+    _BitScanReverse(&idx, static_cast<uint32_t>(x ^ last));
+    return static_cast<size_t>(idx + 1);
+#endif
+#else
+    return 64 - __builtin_clzll(x ^ last);
+#endif
   }
 };
 
@@ -135,10 +167,35 @@ class bucket_flags {
   }
 
   size_t find_first_non_empty() const {
-    if (sizeof(flags_) == 8)
+    if (sizeof(flags_) == 8) {
+#ifdef _MSC_VER
+      unsigned long idx = 0;
+#if defined(_M_X64) || defined(_M_ARM64)
+      if (_BitScanForward64(&idx, static_cast<unsigned __int64>(flags_)))
+        return static_cast<size_t>(idx + 1);
+      return 0;
+#else
+      const uint32_t lo = static_cast<uint32_t>(flags_);
+      if (_BitScanForward(&idx, lo))
+        return static_cast<size_t>(idx + 1);
+      const uint32_t hi = static_cast<uint32_t>(flags_ >> 32);
+      if (_BitScanForward(&idx, hi))
+        return static_cast<size_t>(idx + 33);
+      return 0;
+#endif
+#else
       return __builtin_ffsll(flags_);
+#endif
+    }
 
+#ifdef _MSC_VER
+    unsigned long idx = 0;
+    if (_BitScanForward(&idx, static_cast<unsigned long>(flags_)))
+      return static_cast<size_t>(idx + 1);
+    return 0;
+#else
     return __builtin_ffs(flags_);
+#endif
   }
 
   void swap(bucket_flags& a) {

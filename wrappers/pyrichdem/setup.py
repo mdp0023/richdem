@@ -1,4 +1,5 @@
 import glob
+from pathlib import Path
 import re
 import subprocess
 from typing import Optional
@@ -12,7 +13,7 @@ richdem_git_hash: Optional[str] = None
 
 # Compiler specific arguments
 BUILD_ARGS = {
-    "msvc": ["-std=c++17", "-g", "-fvisibility=hidden", "-O3"],
+    "msvc": ["/std:c++17", "/O2", "/EHsc", "/bigobj"],
     "gcc": ["-std=c++17", "-g", "-fvisibility=hidden", "-O3", "-Wno-unknown-pragmas"],
     "unix": ["-std=c++17", "-g", "-fvisibility=hidden", "-O3", "-Wno-unknown-pragmas"],
 }
@@ -69,11 +70,37 @@ if richdem_git_hash is None:
 
 print("Using RichDEM hash={0}, time={1}".format(richdem_git_hash, richdem_compile_time))
 
+
+def resolve_richdem_root() -> Path:
+    """Resolve RichDEM core path even when symlinks are flattened on Windows."""
+    link_path = Path("lib") / "richdem"
+    if link_path.is_dir():
+        return link_path
+    if link_path.is_file():
+        target = link_path.read_text(encoding="utf8").strip()
+        if target:
+            return link_path.parent / target
+    # Fallback for unexpected layouts
+    return Path("..") / ".." / ".."
+
+
+RICHDEM_ROOT = resolve_richdem_root()
+RICHDEM_INCLUDE = RICHDEM_ROOT / "include"
+RICHDEM_SOURCES = list(
+    glob.glob(str(RICHDEM_ROOT / "src" / "**" / "*.cpp"), recursive=True)
+)
+
+if not RICHDEM_SOURCES:
+    raise RuntimeError(
+        f"Could not find RichDEM C++ sources under '{RICHDEM_ROOT}'. "
+        "Ensure the richdem repository layout is intact."
+    )
+
 ext_modules = [
     Pybind11Extension(
         "_richdem",
-        ["src/pywrapper.cpp"] + list(glob.glob("lib/richdem/src/**/*.cpp", recursive=True)),
-        include_dirs=["lib/richdem/include"],
+        ["src/pywrapper.cpp"] + RICHDEM_SOURCES,
+        include_dirs=[str(RICHDEM_INCLUDE)],
         define_macros=[
             ("DOCTEST_CONFIG_DISABLE", None),
             ("RICHDEM_COMPILE_TIME", f'"\\"{richdem_compile_time}\\""'),
@@ -121,7 +148,7 @@ setuptools.setup(
   keywords         = 'GIS terrain hydrology geomorphology raster',
   #packages        = find_packages(exclude=['contrib', 'docs', 'tests*']),
   install_requires = [
-    "numpy>=1.7,<2; python_version > '3.8'",
+        "numpy>=1.22; python_version > '3.8'",
   ],
   # extras_require    = {
   #   ':python_version > "3.4"': [
